@@ -8,8 +8,10 @@ Do not commit anything. Do not ask questions unless a step says "ask".
 - MARKETPLACE_URL: https://dev.azure.com/trumagroup/TrumaAutomationFramework/_git/ESAF_AI_Toolkit
 - MARKETPLACE_NAME: esaf (the `name` field of the marketplace manifest; read it from the manifest if it differs)
 - PLUGINS: esaf-core, atlassian-cloud, esaf-next, inetx-system, istqb-test-strategy, firmware-review, tools-ni, tools-linworks
-- PLUGIN_INSTALL_ROOT: `~/.copilot/installed-plugins` (GitHub Copilot's per-user plugin store, shared by the
-  Copilot CLI and VS Code; a plugin lives at `PLUGIN_INSTALL_ROOT/<MARKETPLACE_NAME>/<plugin>/`)
+- PLUGIN_INSTALL_ROOT: `~/.vscode/agent-plugins/dev.azure.com/trumagroup/TrumaAutomationFramework/_git/ESAF_AI_Toolkit/plugins`
+  (the clone of the marketplace repository that VS Code's Extensions view keeps per user; a plugin lives at
+  `PLUGIN_INSTALL_ROOT/<plugin>/`. The Copilot CLI's own store `~/.copilot/installed-plugins/<MARKETPLACE_NAME>/<plugin>/`
+  is not used by VS Code and stays empty on a VS Code-only machine.)
 - MEMORY_DIR (relative to repo root): Docs/Memory
 - FORBIDDEN_PATTERN (case-insensitive regex, applied to committed content and commit messages): `claude|anthropic`
 - TRAILER_PATTERN (additionally blocked in commit messages): `co-authored-by|generated with`
@@ -29,10 +31,9 @@ Do not commit anything. Do not ask questions unless a step says "ask".
 - Shell is Git Bash on Windows or a POSIX shell elsewhere; use forward slashes.
 - Command line tools: `claude` may be missing from the Git Bash PATH; fall back to the binary of
   the VS Code extension (`~/.vscode/extensions/anthropic.claude-code-*/resources/native-binary/claude.exe`).
-  `copilot` (GitHub Copilot CLI) may be missing from the PATH as well; look in
-  `%LOCALAPPDATA%/Microsoft/WinGet/Packages/GitHub.Copilot_*/copilot` and in
-  `%APPDATA%/Code/User/globalStorage/github.copilot-chat/copilotCli/`. Ignore warnings about
-  extra certificates. If a tool cannot be found, report it in the step that needs it.
+  If it cannot be found, report it in the step that needs it. Never run the GitHub Copilot CLI
+  (`copilot`): plugin state is read from the file system, and missing plugins are installed by
+  the user in VS Code (Step 8c).
 - Never take a screenshot (screen, window, browser, app) without the user's explicit consent for
   that specific screenshot. This applies to you and to every subagent you launch.
 ## Step 0. Inventory (delegate: mechanical)
@@ -41,10 +42,11 @@ Do not commit anything. Do not ask questions unless a step says "ask".
   `.github/copilot-instructions.md`, `.github/copilot/settings.json`,
   `.github/instructions/*.instructions.md`, `.github/prompts/*.prompt.md`,
   `.github/agents/*.agent.md`, `.github/chatmodes/*.chatmode.md`, `MEMORY_DIR`,
-  `~/.claude/settings.json`, `~/.copilot/settings.json`, the VS Code user settings
-  (`%APPDATA%/Code/User/settings.json`, key `chat.plugins.marketplaces`), output of
-  `git config --global core.excludesfile`, `copilot --version`, `copilot plugin marketplace list`,
-  `copilot plugin list`, and the folders under `PLUGIN_INSTALL_ROOT/<MARKETPLACE_NAME>/`.
+  `~/.claude/settings.json`, `~/.copilot/settings.json` (read only; keys `extraKnownMarketplaces`
+  and `enabledPlugins`), the VS Code user settings (`%APPDATA%/Code/User/settings.json`, key
+  `chat.plugins.marketplaces`), output of `git config --global core.excludesfile`, and the
+  folders under `PLUGIN_INSTALL_ROOT/` that contain a `plugin.json` (these
+  are the installed plugins; no CLI is involved).
 - Tracked harness files at any depth:
   `git ls-files | grep -E '(^|/)(\.claude/|CLAUDE\.md$|CLAUDE\.local\.md$)'`. If any are listed,
   run `git rm --cached` on each one (the global excludes of Step 1 keep them ignored afterwards)
@@ -126,7 +128,7 @@ in Step 10c.
 Local notes for Claude Code (this file is git-ignored):
 - Wrappers under `.claude/agents`, `.claude/rules`, `.claude/skills` are generated from `.github/`
   and from the GitHub Copilot plugins enabled in `.github/copilot/settings.json` (installed under
-  `~/.copilot/installed-plugins`). To change behaviour, edit the `.github/` source or update the
+  `~/.vscode/agent-plugins`). To change behaviour, edit the `.github/` source or update the
   plugin, then regenerate (harness init prompt, Step 10).
 - Auto memory is stored in `Docs/Memory` inside the repository (see `.claude/settings.json`).
 - No connectors or MCP servers in this repository.
@@ -158,8 +160,10 @@ Do not create `.mcp.json`. If one exists and is untracked, report it; do not del
 ## Step 8. GitHub Copilot plugin marketplace and plugins
 The marketplace follows the Agent Plugins layout (`.github/plugin/marketplace.json`, plugin
 content under `com.github.copilot/` and `skills/`). The `claude plugin` commands do not read
-that layout, so the plugins are installed with GitHub Copilot and reach the harness through the
-wrappers of Step 10. Do not run `claude plugin marketplace add` for MARKETPLACE_URL.
+that layout, so the plugins are installed by the user through VS Code's Extensions view and
+reach the harness through the wrappers of Step 10. Do not run `claude plugin marketplace add`
+for MARKETPLACE_URL and do not run the Copilot CLI; this step only edits settings files, reads
+PLUGIN_INSTALL_ROOT and reports.
 ### 8a. Recommend the plugins in the repository (committed, `.github/copilot/settings.json`)
 Merge these keys (create the file if missing). GitHub Copilot offers the listed plugins to
 everyone who opens the repository; the file contains no credentials and no vendor name.
@@ -171,29 +175,36 @@ everyone who opens the repository; the file contains no credentials and no vendo
   "enabledPlugins": { "<plugin>@<MARKETPLACE_NAME>": true, "...": true }
 }
 ```
-One `enabledPlugins` entry per plugin in PLUGINS. Keep entries that are already there.
+One `enabledPlugins` entry per plugin in PLUGINS, always `true`. Keep entries that are already
+there unchanged. Never disable a plugin in this file: never write `false` for any entry and never
+remove an entry. A plugin that is installed under PLUGIN_INSTALL_ROOT but missing from PLUGINS
+keeps whatever entry it has (or none) and is reported in Step 8c.
 ### 8b. Register the marketplace on this machine
-- Copilot CLI: if `copilot plugin marketplace list` has no entry for MARKETPLACE_URL, run
-  `copilot plugin marketplace add MARKETPLACE_URL`. The CLI stores it in `~/.copilot/settings.json`
-  (`extraKnownMarketplaces`), which VS Code's Copilot Chat shares. If authentication to Azure
-  DevOps fails, stop this step and report; do not retry in a loop.
+- `~/.copilot/settings.json` is read, never written: if MARKETPLACE_URL is missing from its
+  `extraKnownMarketplaces`, report it as information only. VS Code finds the marketplace through
+  `chat.plugins.marketplaces` (next bullet) and through the repository's
+  `.github/copilot/settings.json` (Step 8a). Do not run the Copilot CLI to register it.
 - VS Code: ensure the user settings (`%APPDATA%/Code/User/settings.json`; `~/Library/Application
   Support/Code/User/settings.json` on macOS; `~/.config/Code/User/settings.json` on Linux)
   contain MARKETPLACE_URL in the array `chat.plugins.marketplaces`. Merge; create the file if
   missing. If the file contains comments, do not rewrite it: report the exact snippet for the
   user to paste instead.
-### 8c. Install the plugins
-- For each plugin in PLUGINS that `copilot plugin list` does not show as
-  `<plugin>@<MARKETPLACE_NAME>`, run `copilot plugin install <plugin>@<MARKETPLACE_NAME>`.
+### 8c. Check the installed plugins (report only; the user installs them in VS Code)
+- A plugin is installed when `PLUGIN_INSTALL_ROOT/<plugin>/plugin.json`
+  exists. Compare the installed set with PLUGINS. Never install, update, remove or disable a
+  plugin yourself, and never run the Copilot CLI.
+- If no plugin of PLUGINS is installed (fresh machine) or at least one plugin of PLUGINS is
+  missing (the plugin set changed since the last run), report "needs attention" with these
+  instructions for the user, and continue with the plugins that are installed:
+  1. In VS Code, open the Extensions view (`Ctrl+Shift+X`) and type `@agentPlugins` in the
+     search box.
+  2. Install each missing plugin of PLUGINS from the `<MARKETPLACE_NAME>` marketplace (name
+     the missing plugins in the report).
+  3. Run this prompt again so the wrappers of Step 10 are generated.
   A plugin the marketplace does not offer is reported, not treated as an error.
-- Verify: `PLUGIN_INSTALL_ROOT/<MARKETPLACE_NAME>/<plugin>/plugin.json` exists for every plugin,
-  and `~/.copilot/settings.json` lists it under `enabledPlugins`.
-- If the Copilot CLI is not installed, report "needs attention" with these instructions for the
-  user, and continue with the plugins that are already installed:
-  1. Install the CLI (`winget install GitHub.Copilot`) and run `copilot` once to sign in, then
-     run this prompt again; or
-  2. In VS Code, open the Extensions view (`Ctrl+Shift+X`), search `@agentPlugins` and install
-     each plugin of PLUGINS from the `<MARKETPLACE_NAME>` marketplace, then run this prompt again.
+- A plugin installed under `PLUGIN_INSTALL_ROOT/` that is not in PLUGINS is
+  reported and left as it is; its entry in `.github/copilot/settings.json`, if any, stays
+  enabled (Step 8a).
 ### 8d. Project facts the plugins need (report only)
 Each installed plugin's `README.md` has a section "Facts to add to AGENTS.md" naming a heading
 (for example `## Azure DevOps facts`). For every such heading missing from `AGENTS.md`, report it
@@ -249,7 +260,8 @@ repository sources, `<!-- GENERATED from plugin <plugin>@<MARKETPLACE_NAME> (<pa
 plugin>). Update the plugin, then regenerate. -->` for plugin sources. Regenerate all wrappers on
 every run (overwrite; normalize line endings to LF). Delete any file in `.claude/agents`,
 `.claude/rules`, `.claude/skills` that carries the GENERATED marker but was not regenerated in
-this run (its source is gone or its plugin was disabled); a skill folder is deleted as a whole.
+this run (its source is gone, or its plugin is no longer installed or no longer listed in
+`enabledPlugins`); a skill folder is deleted as a whole.
 Never touch files without the marker; report them if they block a wrapper.
 | Source | Wrapper | Frontmatter mapping |
 |---|---|---|
@@ -318,12 +330,14 @@ itself), `CLAUDE.md`, and `CLAUDE.local.md` if present, plus any nested `.claude
   only **report** past commit messages that match.
 ## Step 13. Report
 Print one table with a row per step: `step | status (already ok / applied / needs attention) | details`.
-For Step 8 list the plugins installed, the plugins missing, and the facts headings missing from
-`AGENTS.md`. List every file created or changed, separated into "tracked (review and commit
-yourself)" and "local, git-ignored" (user-level files such as `~/.copilot/settings.json` and the
-VS Code user settings count as local). End with the result of a final check:
+For Step 8 list the plugins installed, the plugins missing (with the `@agentPlugins` install
+instructions of Step 8c), the plugins installed but not in PLUGINS (left enabled), and the facts
+headings missing from `AGENTS.md`. List every file created or changed, separated into "tracked
+(review and commit yourself)" and "local, git-ignored" (user-level files such as the VS Code user
+settings count as local). End with the result of a final check:
 `git ls-files -z | xargs -0 grep -IliE "FORBIDDEN_PATTERN"` and
 `git ls-files | grep -iE "FORBIDDEN_PATTERN"` must both print nothing,
 `git check-ignore -q .claude/settings.json` and `git check-ignore -q CLAUDE.md` must each succeed,
-`copilot plugin list` must show every plugin of PLUGINS (or the step reports why not), and on
+`PLUGIN_INSTALL_ROOT/<plugin>/plugin.json` must exist for every plugin of
+PLUGINS (or Step 8c reports which are missing and how to install them), and on
 Windows `attrib .claude` and `attrib CLAUDE.md` (one target per call) must each show `H`.
