@@ -1,0 +1,6 @@
+# This repository is the source of the harness prompt, not a target of it.
+# The user's global excludes hide these paths everywhere; here they are tracked on purpose.
+!.claude/
+!CLAUDE.md
+!CLAUDE.local.md
+!init-harness.md
