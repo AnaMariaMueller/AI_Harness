@@ -7,7 +7,7 @@ Do not commit anything. Do not ask questions unless a step says "ask".
 ## Parameters
 - MARKETPLACE_URL: https://dev.azure.com/trumagroup/TrumaAutomationFramework/_git/ESAF_AI_Toolkit
 - MARKETPLACE_NAME: esaf (the `name` field of the marketplace manifest; read it from the manifest if it differs)
-- PLUGINS: esaf-core, atlassian-cloud, esaf-next, inetx-system, istqb-test-strategy, firmware-review, tools-ni, tools-linworks
+- PLUGINS: esaf-core, atlassian-cloud, esaf-next, inetx-system, istqb-test-strategy, firmware-review, tools-ni, tools-linworks, tools-bench-modules
 - PLUGIN_INSTALL_ROOT: `~/.vscode/agent-plugins/dev.azure.com/trumagroup/TrumaAutomationFramework/_git/ESAF_AI_Toolkit/plugins`
   (the clone of the marketplace repository that VS Code's Extensions view keeps per user; a plugin lives at
   `PLUGIN_INSTALL_ROOT/<plugin>/`. The Copilot CLI's own store `~/.copilot/installed-plugins/<MARKETPLACE_NAME>/<plugin>/`
