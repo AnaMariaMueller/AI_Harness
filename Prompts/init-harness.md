@@ -1,5 +1,6 @@
 
 # Initialize the AI harness in this repository
+Last updated: 2026-10-12 08:08
 You are setting up Claude Code in the git repository of the current working directory.
 Follow the steps in order. Every step is **check, then apply**: if the desired state already
 exists, do nothing and report "already ok". Running this prompt again must produce no changes.
