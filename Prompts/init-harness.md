@@ -29,6 +29,16 @@ Do not commit anything. Do not ask questions unless a step says "ask".
 - When editing JSON settings, merge keys and keep everything else untouched. When editing
   markdown that has managed blocks, replace only the text between the markers.
 - Shell is Git Bash on Windows or a POSIX shell elsewhere; use forward slashes.
+- Follow the shell and git rules of Step 3b yourself while running this prompt, in every step
+  and in every subagent: create and change files only with your file tools (write and edit),
+  never with heredocs, `echo`/`printf`/`cat` redirection into a file, `tee` or `sed -i`; write
+  text files as UTF-8 without BOM with LF line endings (`*.bat`, `*.cmd`, `*.ps1` use CRLF);
+  use forward slashes and repository-relative paths in commands; single-quote literals that
+  contain `$`, backticks, `!` or `\`; prefix a command with `MSYS_NO_PATHCONV=1` when an
+  argument starts with `/` but is not a path; never use PowerShell syntax; never change
+  `core.autocrlf`. Once the hook of Step 9b is installed it blocks commands that break these
+  rules, including yours. "Merge keys" and "append missing lines" in the steps below always
+  mean: read the file, compute the new content, write it with the file tool.
 - Command line tools: `claude` may be missing from the Git Bash PATH; fall back to the binary of
   the VS Code extension (`~/.vscode/extensions/anthropic.claude-code-*/resources/native-binary/claude.exe`).
   If it cannot be found, report it in the step that needs it. Never run the GitHub Copilot CLI
@@ -66,7 +76,8 @@ Merge these keys (create the file if missing):
   "attribution": { "commit": "", "pr": "", "sessionUrl": false }
 }
 ```
-## Step 3. Shared rules in `AGENTS.md` (committed, tool-neutral)
+## Step 3. Shared rules (committed, tool-neutral)
+### 3a. Rules block in `AGENTS.md`
 Create `AGENTS.md` at REPO if missing. Ensure it contains a managed block delimited by
 `<!-- harness-rules:begin -->` and `<!-- harness-rules:end -->`. Replace the block if present,
 append it otherwise. Block content:
@@ -108,7 +119,47 @@ append it otherwise. Block content:
 - Never take a screenshot of the screen, a window, a browser or an application without the
   user's explicit consent for that specific screenshot. Ask first, every time; a previous
   consent does not carry over.
+### Shell and git
+- The shell rules in `.github/instructions/shell-git-windows.instructions.md` apply to every
+  command: files are created and changed only with the assistant's file tools, never through
+  heredocs, shell redirection, `tee` or `sed -i`; commit messages are passed with `-m` or
+  `-F`, never through a heredoc; text files use LF (CRLF only for `*.bat`, `*.cmd`, `*.ps1`)
+  and UTF-8 without BOM. A local hook blocks commands that break them.
 <!-- harness-rules:end -->
+```
+### 3b. Shell and git rules as a GitHub Copilot instruction
+Ensure `REPO/.github/instructions/shell-git-windows.instructions.md` exists. If it is missing,
+create it with exactly the frontmatter below followed by the managed block. If it exists,
+keep its frontmatter and any text outside the block and replace only the text between
+`<!-- harness-shell-rules:begin -->` and `<!-- harness-shell-rules:end -->` (append the block
+if the markers are missing). `applyTo: "**"` makes the rules apply to every request; Step 10
+generates the local wrapper `.claude/rules/shell-git-windows.md` from this file. The block is
+a short, tool-neutral instruction with the purpose stated first; do not expand it into a longer
+rule list.
+```markdown
+---
+description: Avoid heredoc and line-ending conflicts when running shell commands on Windows (Git Bash)
+applyTo: "**"
+---
+<!-- harness-shell-rules:begin -->
+# Shell commands on Windows
+Purpose: commands run in Git Bash (MSYS2) on Windows. Heredocs and shell writes there have
+produced CRLF/LF churn, unterminated heredocs, mangled `$` and backticks, and whole-file diffs
+that look like conflicts. A local hook blocks the most common cases.
+- Create and change files only with your file tools (write, edit). Do not write files from the
+  shell: no heredocs, no `>`/`>>` into a file, no `tee`, no `sed -i`.
+- Commit messages: `git commit -m 'Subject' -m 'Body'` for short ones, or write the message to
+  `.git/COMMIT_MSG_TMP` with the file tool and run `git commit -F .git/COMMIT_MSG_TMP`; never a heredoc.
+- A heredoc only when a CLI accepts no file: quote the delimiter (`<<'EOF'`), end it alone at
+  column 0, and tell the user why first.
+- Text files: LF, UTF-8 without BOM (`*.bat`, `*.cmd`, `*.ps1`: CRLF). Never change `core.autocrlf`
+  without asking. Before a commit, if `git diff --stat` shows a whole file changed but
+  `git diff -w --stat` shows little, it is a line-ending problem: stop and report it.
+- Bash syntax only, never PowerShell syntax; single quotes around literals with `$`, backticks,
+  `!` or `\`; forward slashes and relative paths; `MSYS_NO_PATHCONV=1` in front of a command whose
+  `/`-prefixed argument is not a path (a regex, a git ref).
+- When unsure whether a command is safe under these rules, ask before running it.
+<!-- harness-shell-rules:end -->
 ```
 ## Step 4. Project overview via `/init`, stored in `AGENTS.md`
 - If `AGENTS.md` has no block delimited by `<!-- project-overview:begin -->` /
@@ -132,6 +183,9 @@ Local notes for Claude Code (this file is git-ignored):
   plugin, then regenerate (harness init prompt, Step 10).
 - Auto memory is stored in `Docs/Memory` inside the repository (see `.claude/settings.json`).
 - No connectors or MCP servers in this repository.
+- Hooks under `.claude/hooks` block AI attribution in commits and shell commands that break the
+  shell rules of `.github/instructions/shell-git-windows.instructions.md` (heredocs,
+  redirection into files, `tee`, `sed -i`, `core.autocrlf` changes).
 Generated wrappers (source -> wrapper):
 <list from Step 10c>
 <!-- harness-local:end -->
@@ -211,7 +265,10 @@ Each installed plugin's `README.md` has a section "Facts to add to AGENTS.md" na
 and tell the user to run `/setup-esaf-toolkit` in Copilot chat (or copy the section from the
 plugin README) and fill in the values. Do not write these sections yourself; their values are
 project facts only the user knows.
-## Step 9. Commit guard hook (local)
+## Step 9. Commit guard and shell-rule hooks (local)
+Both hook scripts are written with the file tool, as UTF-8 without BOM with LF line endings
+(a CRLF shebang line makes bash fail), and made executable (`chmod +x`).
+### 9a. Commit guard
 - Ensure `REPO/.claude/hooks/no-ai-attribution.sh` exists with exactly this content (overwrite if different):
 ```bash
 #!/usr/bin/env bash
@@ -229,7 +286,41 @@ if git diff --cached --diff-filter=AM | grep -E '^\+' | grep -v '^\+\+\+' | grep
 fi
 exit 0
 ```
-- Make it executable (`chmod +x`). Merge into `REPO/.claude/settings.json`:
+### 9b. Shell-rule guard
+- Ensure `REPO/.claude/hooks/shell-rules.sh` exists with exactly this content (overwrite if
+  different). It enforces the rules of Step 3b that a shell command can show: unquoted heredocs,
+  redirection into a file (only `/dev/null` and `>&N` targets pass), `tee`, `sed -i` and
+  `git config` of `core.autocrlf`. Quoted heredocs (`<<'EOF'`) pass, because rule 3 allows
+  them after telling the user.
+```bash
+#!/usr/bin/env bash
+# Blocks shell commands that break the shell and git rules of
+# .github/instructions/shell-git-windows.instructions.md: unquoted heredocs, redirection
+# into files, tee, sed -i, and changes to core.autocrlf. Files are written with the file tools.
+input=$(cat)
+command=$(printf '%s' "$input" | sed -n 's/.*"command":"\(.*\)".*/\1/p')
+block() { echo "Blocked by .claude/hooks/shell-rules.sh: $1" >&2; exit 2; }
+if printf '%s' "$command" | grep -qE "(^|[^<])<<-?[[:space:]]*[A-Za-z_]"; then
+  block "unquoted heredoc. Create or edit the file with the file tool; if a heredoc is unavoidable, quote the delimiter (<<'EOF') and tell the user why."
+fi
+if printf '%s' "$command" | grep -qE "(^|[^[:alnum:]_.-])sed[[:space:]]+(-[a-zA-Z]{0,3}i[a-zA-Z]{0,3}([[:space:]]|$)|--in-place)"; then
+  block "sed -i. Edit the file with the file tool instead."
+fi
+if printf '%s' "$command" | grep -qE "(^|[|&;[:space:]])tee([[:space:]]|$)"; then
+  block "tee. Write the file with the file tool instead."
+fi
+if printf '%s' "$command" | grep -qiE "git[[:space:]]+config.*core\.autocrlf"; then
+  block "git config core.autocrlf. Ask the user before changing line-ending settings."
+fi
+stripped=$(printf '%s' "$command" | sed -E 's#[0-9]*>>?[[:space:]]*(&[0-9]+|/dev/null)##g; s#&>>?[[:space:]]*/dev/null##g')
+if printf '%s' "$stripped" | grep -qE "(^|[^-=<>])>>?[[:space:]]*[^[:space:]&>]"; then
+  block "redirection into a file (> or >>). Write the file with the file tool; only >/dev/null and 2>&1 are allowed."
+fi
+exit 0
+```
+### 9c. Register both hooks
+Merge into `REPO/.claude/settings.json` (the shell-rule hook also matches the PowerShell tool,
+so redirection in PowerShell, which writes UTF-16 or a BOM, is blocked as well):
 ```json
 {
   "hooks": {
@@ -237,15 +328,19 @@ exit 0
       {
         "matcher": "Bash",
         "hooks": [ { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/no-ai-attribution.sh" } ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [ { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/shell-rules.sh" } ]
       }
     ]
   }
 }
 ```
-If an identical hook entry already exists, do not add a second one.
-- Note: once this hook is active it also blocks your own shell commands whose text contains
-  `git commit` together with a forbidden word (for example a test of the hook). Test the hook
-  from a script file instead of an inline command.
+If an identical hook entry already exists, do not add a second one; keep other hook entries.
+- Note: once these hooks are active they also block your own shell commands that match (for
+  example a test of a hook, or an inline `cat <<EOF`). Test a hook from a script file written
+  with the file tool instead of an inline command, and write every file with the file tool.
 ## Step 10. Wire every GitHub Copilot customization and plugin (delegate: mechanical, with this spec)
 This step covers **all** customizations found in Step 0, whether they existed before this prompt
 was first run or were added later, and the content of every plugin enabled in
@@ -319,9 +414,10 @@ itself), `CLAUDE.md`, and `CLAUDE.local.md` if present, plus any nested `.claude
   fails for that reason, clear the attribute, edit, and set it again.
 ## Step 12. Remove AI mentions from committed files (delegate: scan is mechanical, rewrite is prose)
 - `git ls-files -z | xargs -0 grep -IliE "FORBIDDEN_PATTERN"` (text files only).
-- For each hit: rewrite the offending lines in the working tree with neutral wording
-  ("the AI assistant", "an AI-assisted session"), delete `Co-Authored-By` trailer lines that
-  name an assistant, keep the meaning and formatting of everything else. Do not rewrite git history.
+- For each hit: rewrite the offending lines in the working tree with the file edit tool (never
+  `sed -i`) using neutral wording ("the AI assistant", "an AI-assisted session"), delete
+  `Co-Authored-By` trailer lines that name an assistant, keep the meaning, formatting, line
+  endings and encoding of everything else. Do not rewrite git history.
 - File and folder names: `git ls-files | grep -iE "FORBIDDEN_PATTERN"`. For each hit, rename
   the file or folder with `git mv` to a neutral name (for example `Prompt05_ClaudeOpus.md` ->
   `Prompt05_AiAssistant.md`), update references to the old name in tracked files, and report
@@ -339,5 +435,14 @@ settings count as local). End with the result of a final check:
 `git ls-files | grep -iE "FORBIDDEN_PATTERN"` must both print nothing,
 `git check-ignore -q .claude/settings.json` and `git check-ignore -q CLAUDE.md` must each succeed,
 `PLUGIN_INSTALL_ROOT/<plugin>/plugin.json` must exist for every plugin of
-PLUGINS (or Step 8c reports which are missing and how to install them), and on
+PLUGINS (or Step 8c reports which are missing and how to install them),
+`.github/instructions/shell-git-windows.instructions.md` and its wrapper
+`.claude/rules/shell-git-windows.md` must exist, `test -x` must succeed for both hook scripts of
+Step 9 and `.claude/settings.json` must list both, and on
 Windows `attrib .claude` and `attrib CLAUDE.md` (one target per call) must each show `H`.
+Line endings and encoding: for every file this run created or changed, `grep -c $'\r' <file>`
+must print `0` (except `*.bat`, `*.cmd`, `*.ps1`) and `head -c 3 <file> | od -An -c` must not
+show `357 273 277` (a BOM). For the tracked files, compare `git diff --stat` with
+`git diff -w --stat`: a file with nearly every line changed in the first but little or nothing
+in the second has a line-ending problem; report it as "needs attention" and tell the user not
+to commit it until it is fixed.
