@@ -1,4 +1,3 @@
-
 # Initialize the AI harness in this repository
 Last updated: 2026-10-12 08:08
 You are setting up Claude Code in the git repository of the current working directory.
