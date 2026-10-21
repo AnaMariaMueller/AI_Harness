@@ -1,5 +1,5 @@
 # Initialize the AI harness in this repository
-Last updated: 2026-10-12 08:08
+Last updated: 2026-10-21 07:45
 You are setting up Claude Code in the git repository of the current working directory.
 Follow the steps in order. Every step is **check, then apply**: if the desired state already
 exists, do nothing and report "already ok". Running this prompt again must produce no changes.
@@ -28,17 +28,23 @@ Do not commit anything. Do not ask questions unless a step says "ask".
   committed; Step 1 keeps it out of git.
 - When editing JSON settings, merge keys and keep everything else untouched. When editing
   markdown that has managed blocks, replace only the text between the markers.
-- Shell is Git Bash on Windows or a POSIX shell elsewhere; use forward slashes.
-- Follow the shell and git rules of Step 3b yourself while running this prompt, in every step
-  and in every subagent: create and change files only with your file tools (write and edit),
-  never with heredocs, `echo`/`printf`/`cat` redirection into a file, `tee` or `sed -i`; write
-  text files as UTF-8 without BOM with LF line endings (`*.bat`, `*.cmd`, `*.ps1` use CRLF);
-  use forward slashes and repository-relative paths in commands; single-quote literals that
-  contain `$`, backticks, `!` or `\`; prefix a command with `MSYS_NO_PATHCONV=1` when an
-  argument starts with `/` but is not a path; never use PowerShell syntax; never change
-  `core.autocrlf`. Once the hook of Step 9b is installed it blocks commands that break these
-  rules, including yours. "Merge keys" and "append missing lines" in the steps below always
-  mean: read the file, compute the new content, write it with the file tool.
+- The commands of this prompt run in Git Bash on Windows or a POSIX shell elsewhere; use forward
+  slashes and one shell's syntax per command.
+- Follow the shell rules yourself while running this prompt, in every step and in every subagent
+  (the full version is the always-on rule `shell-commands` of the `esaf-core` plugin): create and
+  change files only with your file tools (write and edit), never with heredocs,
+  `echo`/`printf`/`cat` redirection into a file, `tee`, `sed -i`, `Out-File` or `Set-Content`; a
+  heredoc only as input to a command, with a quoted delimiter (`<<'EOF'`); write text files as
+  UTF-8 without BOM with LF line endings (`*.bat`, `*.cmd` use CRLF); use repository-relative
+  paths; single-quote literals that contain `$`, backticks, `!` or `\`; prefix a command with
+  `MSYS_NO_PATHCONV=1` when an argument starts with `/` but is not a path; never change
+  `core.autocrlf` or `core.eol`. Once the hook of Step 9b is installed it blocks commands that
+  break these rules, including yours. "Merge keys" and "append missing lines" in the steps below
+  always mean: read the file, compute the new content, write it with the file tool.
+- Before you edit a tracked file, check its working copy once Step 3b has run: if
+  `git ls-files --eol <file>` shows `w/crlf` and `git diff --quiet -- <file>` succeeds (no local
+  changes), run `rm <file>` and `git checkout -- <file>` so it is checked out again with LF. A
+  file with local changes is edited in its own line endings and reported in Step 13.
 - Command line tools: `claude` may be missing from the Git Bash PATH; fall back to the binary of
   the VS Code extension (`~/.vscode/extensions/anthropic.claude-code-*/resources/native-binary/claude.exe`).
   If it cannot be found, report it in the step that needs it. Never run the GitHub Copilot CLI
@@ -120,47 +126,44 @@ append it otherwise. Block content:
   user's explicit consent for that specific screenshot. Ask first, every time; a previous
   consent does not carry over.
 ### Shell and git
-- The shell rules in `.github/instructions/shell-git-windows.instructions.md` apply to every
-  command: files are created and changed only with the assistant's file tools, never through
-  heredocs, shell redirection, `tee` or `sed -i`; commit messages are passed with `-m` or
-  `-F`, never through a heredoc; text files use LF (CRLF only for `*.bat`, `*.cmd`, `*.ps1`)
-  and UTF-8 without BOM. A local hook blocks commands that break them.
+- The always-on rule `shell-commands` of the `esaf-core` plugin applies to every command: which
+  shell for which task, files created and changed only with the assistant's file tools, a heredoc
+  only as quoted input to a command, and a diff check before every commit.
+- `.gitattributes` keeps LF in the repository and in every working copy (CRLF only for `*.bat`
+  and `*.cmd`). Never change `core.autocrlf` or `core.eol`. A local hook blocks commands that
+  break these rules.
 <!-- harness-rules:end -->
 ```
-### 3b. Shell and git rules as a GitHub Copilot instruction
-Ensure `REPO/.github/instructions/shell-git-windows.instructions.md` exists. If it is missing,
-create it with exactly the frontmatter below followed by the managed block. If it exists,
-keep its frontmatter and any text outside the block and replace only the text between
-`<!-- harness-shell-rules:begin -->` and `<!-- harness-shell-rules:end -->` (append the block
-if the markers are missing). `applyTo: "**"` makes the rules apply to every request; Step 10
-generates the local wrapper `.claude/rules/shell-git-windows.md` from this file. The block is
-a short, tool-neutral instruction with the purpose stated first; do not expand it into a longer
-rule list.
-```markdown
----
-description: Avoid heredoc and line-ending conflicts when running shell commands on Windows (Git Bash)
-applyTo: "**"
----
-<!-- harness-shell-rules:begin -->
-# Shell commands on Windows
-Purpose: commands run in Git Bash (MSYS2) on Windows. Heredocs and shell writes there have
-produced CRLF/LF churn, unterminated heredocs, mangled `$` and backticks, and whole-file diffs
-that look like conflicts. A local hook blocks the most common cases.
-- Create and change files only with your file tools (write, edit). Do not write files from the
-  shell: no heredocs, no `>`/`>>` into a file, no `tee`, no `sed -i`.
-- Commit messages: `git commit -m 'Subject' -m 'Body'` for short ones, or write the message to
-  `.git/COMMIT_MSG_TMP` with the file tool and run `git commit -F .git/COMMIT_MSG_TMP`; never a heredoc.
-- A heredoc only when a CLI accepts no file: quote the delimiter (`<<'EOF'`), end it alone at
-  column 0, and tell the user why first.
-- Text files: LF, UTF-8 without BOM (`*.bat`, `*.cmd`, `*.ps1`: CRLF). Never change `core.autocrlf`
-  without asking. Before a commit, if `git diff --stat` shows a whole file changed but
-  `git diff -w --stat` shows little, it is a line-ending problem: stop and report it.
-- Bash syntax only, never PowerShell syntax; single quotes around literals with `$`, backticks,
-  `!` or `\`; forward slashes and relative paths; `MSYS_NO_PATHCONV=1` in front of a command whose
-  `/`-prefixed argument is not a path (a regex, a git ref).
-- When unsure whether a command is safe under these rules, ask before running it.
-<!-- harness-shell-rules:end -->
+### 3b. Line endings in `.gitattributes` (committed)
+Line endings are fixed per repository, so no clone's `core.autocrlf` decides them. Ensure
+`REPO/.gitattributes` contains each of these lines exactly once (create the file if missing,
+append only missing lines, keep everything else):
 ```
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+```
+- If the file already has another rule for `*`, `*.bat` or `*.cmd` (for example `* text=auto`
+  without `eol`, or `* -text`), do not change it: report "needs attention" with the lines above.
+- Then report, without running anything:
+  - stored files with CRLF: `git ls-files --eol | grep -c '^i/crlf'`. If the count is not 0, tell
+    the user to run `git add --renormalize .` and commit that on its own.
+  - working copies with CRLF: `git ls-files --eol | grep -c 'w/crlf'`. If the count is not 0, tell
+    the user that on a clean working tree `git rm --cached -r -q .` followed by `git reset --hard`
+    checks every file out again with LF.
+- Never change `core.autocrlf` or `core.eol`.
+### 3c. Retire the old shell instruction
+The shell rules come from the always-on rule `shell-commands` of the `esaf-core` plugin (wrapped
+in Step 10). Earlier versions of this prompt wrote them to
+`REPO/.github/instructions/shell-git-windows.instructions.md` between
+`<!-- harness-shell-rules:begin -->` and `<!-- harness-shell-rules:end -->`.
+- If that file is missing, or has no such markers, this step is "already ok".
+- Otherwise remove the block with both markers. If what remains is only the frontmatter (with
+  `description: Avoid heredoc and line-ending conflicts ...` and `applyTo: "**"`) and blank lines,
+  delete the file from the working tree and report the deletion as tracked. If other text
+  remains, keep the file and report it.
+- Step 10 then deletes the stale wrapper `.claude/rules/shell-git-windows.md` by its GENERATED
+  marker.
 ## Step 4. Project overview via `/init`, stored in `AGENTS.md`
 - If `AGENTS.md` has no block delimited by `<!-- project-overview:begin -->` /
   `<!-- project-overview:end -->`, run `/init`. It writes `CLAUDE.md`. Move the project
@@ -184,8 +187,8 @@ Local notes for Claude Code (this file is git-ignored):
 - Auto memory is stored in `Docs/Memory` inside the repository (see `.claude/settings.json`).
 - No connectors or MCP servers in this repository.
 - Hooks under `.claude/hooks` block AI attribution in commits and shell commands that break the
-  shell rules of `.github/instructions/shell-git-windows.instructions.md` (heredocs,
-  redirection into files, `tee`, `sed -i`, `core.autocrlf` changes).
+  `shell-commands` rule of the `esaf-core` plugin (unquoted heredocs, redirection into files,
+  `tee`, `sed -i`, `Out-File`/`Set-Content`/`Add-Content`, `core.autocrlf`/`core.eol` changes).
 Generated wrappers (source -> wrapper):
 <list from Step 10c>
 <!-- harness-local:end -->
@@ -288,20 +291,25 @@ exit 0
 ```
 ### 9b. Shell-rule guard
 - Ensure `REPO/.claude/hooks/shell-rules.sh` exists with exactly this content (overwrite if
-  different). It enforces the rules of Step 3b that a shell command can show: unquoted heredocs,
-  redirection into a file (only `/dev/null` and `>&N` targets pass), `tee`, `sed -i` and
-  `git config` of `core.autocrlf`. Quoted heredocs (`<<'EOF'`) pass, because rule 3 allows
-  them after telling the user.
+  different). It enforces the parts of the `shell-commands` rule (`esaf-core` plugin) that a
+  shell command can show: unquoted heredocs, redirection into a file (only `/dev/null` and `>&N`
+  targets pass), `tee`, `sed -i`, the PowerShell file writers `Out-File`, `Set-Content` and
+  `Add-Content`, and `git config` of `core.autocrlf` or `core.eol`. Quoted heredocs (`<<'EOF'`)
+  pass, because the rule allows them as input to a command; a heredoc into a file is still caught
+  by the redirection check.
 ```bash
 #!/usr/bin/env bash
-# Blocks shell commands that break the shell and git rules of
-# .github/instructions/shell-git-windows.instructions.md: unquoted heredocs, redirection
-# into files, tee, sed -i, and changes to core.autocrlf. Files are written with the file tools.
+# Blocks shell commands that break the shell-commands rule: unquoted heredocs, redirection into
+# files, tee, sed -i, PowerShell file writers, and changes to core.autocrlf or core.eol.
+# Files are written with the file tools.
 input=$(cat)
 command=$(printf '%s' "$input" | sed -n 's/.*"command":"\(.*\)".*/\1/p')
 block() { echo "Blocked by .claude/hooks/shell-rules.sh: $1" >&2; exit 2; }
 if printf '%s' "$command" | grep -qE "(^|[^<])<<-?[[:space:]]*[A-Za-z_]"; then
-  block "unquoted heredoc. Create or edit the file with the file tool; if a heredoc is unavoidable, quote the delimiter (<<'EOF') and tell the user why."
+  block "unquoted heredoc. Create or edit files with the file tool; a heredoc is allowed only as input to a command, with a quoted delimiter (<<'EOF')."
+fi
+if printf '%s' "$command" | grep -qiE "(^|[|;({[:space:]])(Out-File|Set-Content|Add-Content)([[:space:]]|$)"; then
+  block "Out-File, Set-Content or Add-Content. Write the file with the file tool instead."
 fi
 if printf '%s' "$command" | grep -qE "(^|[^[:alnum:]_.-])sed[[:space:]]+(-[a-zA-Z]{0,3}i[a-zA-Z]{0,3}([[:space:]]|$)|--in-place)"; then
   block "sed -i. Edit the file with the file tool instead."
@@ -309,8 +317,8 @@ fi
 if printf '%s' "$command" | grep -qE "(^|[|&;[:space:]])tee([[:space:]]|$)"; then
   block "tee. Write the file with the file tool instead."
 fi
-if printf '%s' "$command" | grep -qiE "git[[:space:]]+config.*core\.autocrlf"; then
-  block "git config core.autocrlf. Ask the user before changing line-ending settings."
+if printf '%s' "$command" | grep -qiE "git[[:space:]]+config.*core\.(autocrlf|eol)"; then
+  block "git config core.autocrlf or core.eol. Line endings are set in .gitattributes; ask the user before changing these settings."
 fi
 stripped=$(printf '%s' "$command" | sed -E 's#[0-9]*>>?[[:space:]]*(&[0-9]+|/dev/null)##g; s#&>>?[[:space:]]*/dev/null##g')
 if printf '%s' "$stripped" | grep -qE "(^|[^-=<>])>>?[[:space:]]*[^[:space:]&>]"; then
@@ -436,12 +444,14 @@ settings count as local). End with the result of a final check:
 `git check-ignore -q .claude/settings.json` and `git check-ignore -q CLAUDE.md` must each succeed,
 `PLUGIN_INSTALL_ROOT/<plugin>/plugin.json` must exist for every plugin of
 PLUGINS (or Step 8c reports which are missing and how to install them),
-`.github/instructions/shell-git-windows.instructions.md` and its wrapper
-`.claude/rules/shell-git-windows.md` must exist, `test -x` must succeed for both hook scripts of
+`.gitattributes` must contain the three lines of Step 3b,
+`.github/instructions/shell-git-windows.instructions.md` must not contain the
+`harness-shell-rules` markers, the wrapper `.claude/rules/shell-commands.md` must exist when
+`esaf-core` is installed, `test -x` must succeed for both hook scripts of
 Step 9 and `.claude/settings.json` must list both, and on
 Windows `attrib .claude` and `attrib CLAUDE.md` (one target per call) must each show `H`.
 Line endings and encoding: for every file this run created or changed, `grep -c $'\r' <file>`
-must print `0` (except `*.bat`, `*.cmd`, `*.ps1`) and `head -c 3 <file> | od -An -c` must not
+must print `0` (except `*.bat`, `*.cmd`) and `head -c 3 <file> | od -An -c` must not
 show `357 273 277` (a BOM). For the tracked files, compare `git diff --stat` with
 `git diff -w --stat`: a file with nearly every line changed in the first but little or nothing
 in the second has a line-ending problem; report it as "needs attention" and tell the user not

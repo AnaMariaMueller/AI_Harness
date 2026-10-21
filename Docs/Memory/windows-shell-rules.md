@@ -1,15 +1,15 @@
 ---
 name: windows-shell-rules
-description: "User works in Git Bash on Windows and wants files written only with the file tools, never heredocs, redirection, tee or sed -i; LF endings, UTF-8 without BOM"
+description: "User works on Windows with Git Bash and PowerShell 7; files only via the file tools, heredoc only as quoted stdin, LF via .gitattributes, rules live in the esaf-core plugin rule shell-commands"
 metadata:
   node_type: memory
   type: feedback
   originSessionId: 44dd8205-b9a5-444f-9132-9d7ee8f804d4
-  modified: 2026-10-11T16:26:28.504Z
+  modified: 2026-10-21T05:41:37.988Z
 ---
 
-Create and change files only with the write and edit tools, never with heredocs, `echo`/`printf`/`cat` redirection, `tee` or `sed -i`. Commit messages go through `-m` flags or `-F .git/COMMIT_MSG_TMP`, never a heredoc. Text files use LF (CRLF only for `*.bat`, `*.cmd`, `*.ps1`) and UTF-8 without BOM. Use forward slashes and relative paths, single quotes around literals with `$`, backticks, `!` or `\`, `MSYS_NO_PATHCONV=1` for non-path arguments starting with `/`, and never PowerShell syntax or `git config core.autocrlf` without asking. Before committing compare `git diff --stat` with `git diff -w --stat` and stop on line-ending churn.
+Create and change files only with the write and edit tools, never with heredocs, `echo`/`printf`/`cat` redirection, `tee`, `sed -i`, `Out-File` or `Set-Content`. A heredoc is fine only as input to a command with a quoted delimiter (`git commit -F - <<'EOF'`). Git Bash is the default shell (git, searches, pipes); PowerShell 7 for `.ps1` scripts and Windows administration; one shell's syntax per command. Text files use LF (CRLF only for `*.bat`, `*.cmd`) and UTF-8 without BOM, fixed per repository by `.gitattributes` (`* text=auto eol=lf`). Never change `core.autocrlf` or `core.eol` without asking. Before committing compare `git diff --stat` with `git diff -w --stat` and stop on line-ending churn.
 
-**Why:** Heredocs in this Windows/MSYS2 setup caused CRLF/LF churn, unterminated heredocs, mangled `$` and backticks, and whole-file diffs that looked like conflicts (stated by the user on 2026-10-11). This user's git has `core.autocrlf=true` and this repository has no `.gitattributes`.
+**Why:** Heredocs and shell writes caused CRLF/LF churn and whole-file diffs that looked like conflicts (user, 2026-10-11). Root cause found on 2026-10-21: Git for Windows sets `core.autocrlf=true` system-wide, so checkouts are CRLF while heredocs write LF; repos had no `.gitattributes`.
 
-**How to apply:** Follow these rules in every session in this repository and in target repositories, even when a harness instruction suggests editing files through the shell. The harness prompt installs a short, purpose-first version of them as a Copilot instruction (Step 3b of `Prompts/init-harness.md`) plus the hook `shell-rules.sh`. The user does not want their personal rule text copied verbatim into committed files; keep the installed instruction concise and focused on avoiding heredoc and line-ending conflicts. See [[harness-files-tracked-here]].
+**How to apply:** The shared rule text lives in the always-on rule `shell-commands` of the `esaf-core` plugin (ESAF AI Toolkit, from esaf-core 1.12.0); the harness prompt no longer writes its own shell instruction, only `.gitattributes` and the hook `shell-rules.sh`. The user does not want their personal rule text copied verbatim into committed files; keep rule text concise. See [[harness-files-tracked-here]].
