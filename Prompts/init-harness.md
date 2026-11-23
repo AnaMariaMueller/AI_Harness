@@ -1,5 +1,5 @@
 # Initialize the AI harness in this repository
-Last updated: 2026-10-21 07:45
+Last updated: 2026-11-09 12:02
 You are setting up Claude Code in the git repository of the current working directory.
 Follow the steps in order. Every step is **check, then apply**: if the desired state already
 exists, do nothing and report "already ok". Running this prompt again must produce no changes.
@@ -7,7 +7,7 @@ Do not commit anything. Do not ask questions unless a step says "ask".
 ## Parameters
 - MARKETPLACE_URL: https://dev.azure.com/trumagroup/TrumaAutomationFramework/_git/ESAF_AI_Toolkit
 - MARKETPLACE_NAME: esaf (the `name` field of the marketplace manifest; read it from the manifest if it differs)
-- PLUGINS: esaf-core, atlassian-cloud, esaf-next, inetx-system, istqb-test-strategy, firmware-review, tools-ni, tools-linworks, tools-bench-modules
+- PLUGINS: esaf-core, atlassian-cloud, dev-flow, esaf-next, inetx-system, istqb-test-strategy, firmware-review, tools-ni, tools-linworks, tools-bench-modules, tools-altium, tools-codebeamer
 - PLUGIN_INSTALL_ROOT: `~/.vscode/agent-plugins/dev.azure.com/trumagroup/TrumaAutomationFramework/_git/ESAF_AI_Toolkit/plugins`
   (the clone of the marketplace repository that VS Code's Extensions view keeps per user; a plugin lives at
   `PLUGIN_INSTALL_ROOT/<plugin>/`. The Copilot CLI's own store `~/.copilot/installed-plugins/<MARKETPLACE_NAME>/<plugin>/`
