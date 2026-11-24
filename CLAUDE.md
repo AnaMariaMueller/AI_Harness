@@ -4,36 +4,45 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repository is
 
-`AI_Harness` holds the prompt that sets up an AI coding harness inside other git repositories. There is no application code, no build system, and no test suite. The repository has no commits yet.
+`AI_Harness` holds what connects Claude Code to the GitHub Copilot customizations of the user's
+repositories and to the ESAF AI Toolkit plugins. There is no application code and no build system.
 
-The single meaningful file is `Prompts/init-harness.md`. It is an executable, step-by-step prompt (Steps 0 to 13) that, when run in a target repository, configures Claude Code and GitHub Copilot side by side:
+| File | What it does | When it runs |
+|---|---|---|
+| `Prompts/setup-machine.md` | One-time machine setup: global git excludes (`.claude/`, `CLAUDE.md`, `CLAUDE.local.md`, `init-harness.md`), user settings (thinking summaries, no attribution), the user-level hooks from `Hooks/`, the ESAF plugins via the update script, connectors and MCP per repository or workspace (asked) | Once per machine, and again when `Hooks/` changes |
+| `Prompts/init-harness.md` | Wraps one repository's own `.github/` customizations (agents, chatmodes, instructions, prompts, `copilot-instructions.md`) as Claude Code agents, rules and skills, lists them in `CLAUDE.md` and in the `harness-customizations` block of `AGENTS.md`, and sets the memory folder declared in "Project memory facts" | In a repository, whenever its `.github/` customizations change |
+| `Scripts/Update-EsafPlugins.ps1` | Fast-forwards the VS Code marketplace clone of the ESAF AI Toolkit, runs `copilot plugin install`/`update` for every marketplace plugin, regenerates the user-level wrappers (`~/.claude/agents`, `rules/esaf-*.md`, `skills`, `commands`) | After every toolkit publish (a PR completed into its `master`); never scheduled |
+| `Hooks/no-ai-attribution.sh`, `Hooks/shell-rules.sh`, `Hooks/no-ai-attribution.allow` | Source of the user-level `PreToolUse` hooks: commit guard (message, trailers, staged additions; workspace-aware; allowlist by origin URL) and shell-rule guard (heredocs, redirection, `tee`, `sed -i`, PowerShell file writers, `core.autocrlf`/`core.eol`) | Copied to `~/.claude/hooks/` by `setup-machine.md` |
 
-- Git-ignores all harness files globally (`.claude/`, `CLAUDE.md`, `CLAUDE.local.md`, `init-harness.md`) via `core.excludesfile`.
-- Writes user-level and project-level `settings.json` (thinking summaries on, attribution off, in-repo auto memory, connectors and MCP disabled).
-- Makes `AGENTS.md` the committed, tool-neutral source of truth, with managed blocks: `harness-rules`, `project-overview`, `harness-customizations`.
-- Fixes line endings per repository with a committed `.gitattributes` (`* text=auto eol=lf`, CRLF only for `*.bat` and `*.cmd`) and reports stored or checked-out CRLF files with the commands to renormalize them. The shell rules themselves (which of Git Bash or PowerShell 7 for what, files only through the file tools, a heredoc only as quoted input to a command, the diff check before a commit) live in the always-on rule `shell-commands` of the `esaf-core` plugin, which Step 10 wraps into `.claude/rules/shell-commands.md`. Step 3c retires the `.github/instructions/shell-git-windows.instructions.md` (`harness-shell-rules` block) written by earlier versions. The `harness-rules` block points to the plugin rule.
-- Keeps `CLAUDE.md` as a git-ignored local file that imports `AGENTS.md` and lists generated wrappers (managed block `harness-local`).
-- Stores persistent memory in `Docs/Memory` inside the target repo and migrates any existing memory from `~/.claude/projects/<slug>/memory/`.
-- Registers a private Azure DevOps plugin marketplace (`esaf`) in the committed `.github/copilot/settings.json` and the VS Code user settings, checks that a fixed plugin list is installed under `~/.copilot/installed-plugins` (never running the Copilot CLI; missing plugins are reported with instructions to install them from the VS Code Extensions view using the `@agentPlugins` filter, and no installed plugin is ever disabled), and generates `.claude/agents`, `.claude/rules`, `.claude/skills` wrappers from `.github/` customizations and installed plugins. Wrappers carry a `<!-- GENERATED from ... -->` marker and are regenerated on every run.
-- Installs two `PreToolUse` hooks: `.claude/hooks/no-ai-attribution.sh` (Bash) blocks `git commit` when the message or staged additions match `claude|anthropic` or contain `co-authored-by` / `generated with`; `.claude/hooks/shell-rules.sh` (Bash and PowerShell) blocks unquoted heredocs, redirection into files (only `/dev/null` and `>&N` pass), `tee`, `sed -i`, `Out-File`/`Set-Content`/`Add-Content` and `git config` of `core.autocrlf` or `core.eol`.
-- Hides `.claude` and `CLAUDE.md` (Windows `attrib +h`, or `.hidden` on Linux/macOS) and scrubs AI/vendor mentions from committed files and file names.
+Two placement modes for repository wrappers (`init-harness.md` Step 0):
+- **Repository mode**: the wrappers go into the repository's git-ignored `.claude/`, the list into
+  its git-ignored `CLAUDE.md`.
+- **Workspace mode**: when the repository's parent folder is not a git repository and holds a
+  `CLAUDE.md` and a `.claude/`, the wrappers go into the workspace's `.claude/` (agent and skill
+  descriptions start with `[<repo> repository]`, rule paths get the `<repo>/` prefix) and the list
+  into a `harness-local:<repo>` block of the workspace `CLAUDE.md`. The clone itself holds no
+  Claude Code files.
+
+Rules that hold in every repository (no AI attribution, delegation, screenshots, shell commands,
+`.gitattributes`, project memory) are not written by the harness: they are always-on rules of the
+`esaf-core` and `dev-flow` plugins.
 
 ## Project memory
 
 Persistent memory for this repository lives in `Docs/Memory` (index `MEMORY.md`, one fact per file) and is committed. `.claude/settings.json` sets `autoMemoryDirectory` to that folder. Never store memory for this project in a user-level or external folder; if one appears there, move it into `Docs/Memory` and delete the external copy.
 
-## Conventions to respect when editing the prompt
+## Conventions to respect when editing the prompts and scripts
 
-- **Idempotent, check-then-apply.** Every step must report "already ok" when the desired state exists and produce no changes on a second run. Keep new steps in that style.
-- **Never commits.** The prompt only edits the working tree and reports a table of changed files split into "tracked (review and commit yourself)" and "local, git-ignored".
-- **Neutral wording in committed output.** Anything the prompt writes to a tracked file (`AGENTS.md`, `.github/copilot/settings.json`, `Docs/Memory`) must not match the case-insensitive pattern `claude|anthropic`. Vendor names are allowed only in git-ignored files such as `CLAUDE.md` and `.claude/`.
-- **Harness files are tracked in this repo.** The prompt tells *target* repositories to keep `init-harness.md`, `CLAUDE.md` and `.claude/` out of git via the global excludes file. This repository is the source of the prompt, so those paths are deliberately committed here. The repo `.gitignore` un-ignores them (`!CLAUDE.md`, `!.claude/`, `!init-harness.md`, `!CLAUDE.local.md`) to override the global excludes; keep those lines.
+- **Idempotent, check-then-apply.** Every step must report "already ok" when the desired state exists and produce no changes on a second run. The update script writes only changed wrappers and must report `0 written` on a second run.
+- **Never commits.** The prompts only edit the working tree and report the changed files split into "tracked (review and commit yourself)" and "local".
+- **Neutral wording in committed output of target repositories.** Anything a prompt writes to a tracked file of a target repository (the `AGENTS.md` block) must not match `claude|anthropic`. Vendor names are allowed in git-ignored files, in the workspace and at user level.
+- **Harness files are tracked in this repo.** This repository is the source of the prompts, so `CLAUDE.md`, `.claude/` and the prompts are deliberately committed here; the repo `.gitignore` un-ignores them (`!CLAUDE.md`, `!.claude/`, `!init-harness.md`, `!CLAUDE.local.md`) against the global excludes. Keep those lines. Its origin URL is in `Hooks/no-ai-attribution.allow`, so the commit guard checks only its commit messages, not its staged content.
+- **Hooks are tested from script files.** Once the hooks are active they block inline test commands that contain what they block. Write a test script with the file tool and pass paths without a vendor name in them (the scratch folder of a session can contain one).
+- **Git for Windows tools.** GNU grep 3.0 of Git Bash aborts on `-i` combined with `-F` (fold case with `tr` instead), and in basic regex `\+` is a quantifier (use `grep -E` for a literal `+`). Count carriage returns with `tr -cd '\r' < <file> | wc -c`: `grep -c $'\r'` counts every line there and grep ignores CR.
 - **JSON and markdown edits are merges.** Settings files are merged key by key; markdown with managed blocks is replaced only between the `<!-- name:begin -->` / `<!-- name:end -->` markers.
-- **Shell assumptions.** Git Bash on Windows or POSIX elsewhere, forward slashes, and a fallback path for `claude` (VS Code extension native binary) when it is not on PATH. The Copilot CLI is never used; plugin state comes from the file system.
-- **The prompt obeys its own shell rules.** Every step writes files with the file tools (write/edit), never with heredocs, redirection, `tee` or `sed -i`, and keeps LF endings and UTF-8 without BOM. The same applies when editing this repository: this user's git has `core.autocrlf=true` (system-wide); the repo's `.gitattributes` overrides it with LF, but still check `git diff --stat` against `git diff -w --stat` before committing and never change `core.autocrlf` without asking.
-- **Delegation guidance is part of the spec.** Steps are tagged "delegate: mechanical" or similar; the prompt expects mechanical steps to run on the smallest available model and judgment calls to stay with the most capable one.
-- **Parameters live at the top of the prompt.** Marketplace URL and name, plugin list, plugin install root, memory dir, and the forbidden/trailer patterns are defined once under `## Parameters`. Change them there, not inline in steps.
+- **Shell rules.** The prompts and scripts obey the `shell-commands` rule of `esaf-core`: files only through the file tools, LF and UTF-8 without BOM, a heredoc only as quoted input to a command. This user's git has `core.autocrlf=true` (system-wide); the repo's `.gitattributes` overrides it with LF, but still check `git diff --stat` against `git diff -w --stat` before committing and never change `core.autocrlf` without asking.
+- **Parameters live at the top of each prompt** (`## Parameters`). Change them there, not inline in steps.
 
 ## Note on this file
 
-The prompt's Step 5 expects `CLAUDE.md` in a target repo to be a generated, git-ignored local file with a `harness-local` managed block. This repository is the source of the prompt, not a target, so this file is plain, committed documentation. Do not run the harness prompt against this repository; it would git-ignore and hide the very files this repo exists to track.
+This repository is the source of the prompts, not a target: do not run `init-harness.md` or `setup-machine.md` against it as a target repository.

@@ -1,0 +1,3 @@
+# Repositories whose content names an assistant or vendor on purpose (one origin URL or absolute
+# path per line). Their staged additions are not checked; their commit messages still are.
+https://github.com/AnaMariaMueller/AI_Harness.git
